@@ -29,11 +29,15 @@ import sys
 
 class SiprosSample():
     
-    def __init__(self, sample_name, sample_substrate, sample_timepoint, sample_location):
+    def __init__(self, sample_name, sample_treatment, sample_timepoint, sample_location, taxonomy_file, bactNOG_file, pro_txt, pep_txt):
         self.name = sample_name
-        self.substrate = sample_substrate
+        self.treatment = sample_treatment
         self.timepoint = sample_timepoint
         self.location = sample_location
+        self.taxonomy_file = taxonomy_file
+        self.bactNOG_file = bactNOG_file
+        self.pro_txt = pro_txt
+        self.pep_txt = pep_txt
         self.proteins = {} # protein name : (sample_proteinID, (nog, cat, des), (dom,phy,cla,odr,fam,gen,spe))
         self.spectra = {}
         self.enrichments = {}
@@ -46,14 +50,19 @@ class SiprosSample():
         self.unique_specCount = 0
         self.peptCount = 0
         self.unique_peptCount = 0
-
+        self.load_proteins()
+        self.load_peptides()
+        self.annotate_taxonomy()
+        self.annotate_bactNOG()
+        self.build_sample_summary()
+    
 #------------------------------------------------------------------#
-#                    Data Input/Calculation Methods                            #
+#                    Data Input/Calculation Methods                #
 #------------------------------------------------------------------#
 
-    def load_proteins (self, sipros_pro_txt):
-        print("<> Loading pro.txt file: " + sipros_pro_txt)
-        inFile = io.open(sipros_pro_txt)
+    def load_proteins (self):
+        print("<> Loading pro.txt file: " + self.pro_txt)
+        inFile = io.open(self.pro_txt)
         for line in inFile:
             if line[0] != '#':
                 listLine = line.strip().split("\t")
@@ -77,9 +86,9 @@ class SiprosSample():
         print("\tNumber of Unique Protein IDs: " + str(self.unique_protCount))
         print("\tNumber of Total Protein IDs: " + str(self.protCount))
         
-    def load_peptides (self, sipros_pep_txt):
-        print("<> Loading pep.txt file: " + sipros_pep_txt)
-        inFile = io.open(sipros_pep_txt)
+    def load_peptides (self):
+        print("<> Loading pep.txt file: " + self.pep_txt)
+        inFile = io.open(self.pep_txt)
         for line in inFile:
             if line[0] != '#':
                 listLine = line.strip().split("\t")
@@ -120,9 +129,9 @@ class SiprosSample():
         print("\tNumber of Unique Peptide IDs: " + str(self.unique_peptCount))
         print("\tNumber of Total Peptide IDs: " + str(self.peptCount))
 
-    def annotate_bactNOG (self, bactNOG_file):
-        print("<> Loading bactNOG annotation file: " + bactNOG_file)
-        inFile = io.open(bactNOG_file)                                                              
+    def annotate_bactNOG (self):
+        print("<> Loading bactNOG annotation file: " + self.bactNOG_file)
+        inFile = io.open(self.bactNOG_file)                                                              
         for line in inFile:
             listLine = line.strip().split("\t")
             if listLine[0] != "ProteinID":
@@ -140,9 +149,9 @@ class SiprosSample():
             self.get_LCF()
             self.bactNOG[p] = self.lcf
             
-    def annotate_taxonomy (self, taxonomy_file):
-        print("<> Loading taxonomy annotation file: " + taxonomy_file)
-        inFile = io.open(taxonomy_file)                                                              
+    def annotate_taxonomy (self):
+        print("<> Loading taxonomy annotation file: " + self.taxonomy_file)
+        inFile = io.open(self.taxonomy_file)                                                              
         for line in inFile:
             listLine = line.strip().split("\t")
             if listLine[0] != "ProteinID":
@@ -164,7 +173,8 @@ class SiprosSample():
             self.get_LCA()
             self.taxonomy[p] = self.lca
             
-    def calculate_sample_summary (self):
+    def build_sample_summary (self):
+        self.summary = {}
         print("<>Calculating summary of spectra and protein IDs by taxa and NOG category")
         for p in self.spectra:
             self.new_summary_entry = []
@@ -288,8 +298,8 @@ class SiprosSample():
             enr = [0.0]*101
             for nog in self.summary[rank][taxa]:
                 [in_prc, in_usc, in_enr] = self.summary[rank][taxa][nog]
-                prc += prc
-                usc = usc
+                prc += in_prc
+                usc = in_usc
                 enr = [enr[i]+in_enr[i] for i in range(len(enr))]
             self.calculate_enrichment_bins(enr) # makes self.binsList
             bsc = sum(enr)
