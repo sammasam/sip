@@ -46,6 +46,7 @@ class SiprosDatabase():
         print("Loading fasta file: " + fasta_file)
         inF = io.open(fasta_file)
         seq = ""
+        seq_id = ""
         for line in inF:
             line = line.strip()
             if line[0] == ">":
@@ -54,9 +55,10 @@ class SiprosDatabase():
                     seq_length = len(seq)
                     self.seq_lengths.append(seq_length)
                     self.faa[seq_id] = seq
+                    self.taxonomy[seq_id] = ('na','na','na','na','na','na','na')
+                    self.bactNOG[seq_id] = ('na','na','na')
                     seq = ""
-                else:
-                    seq_id = line[1:]
+                seq_id = line[1:]
             else:
                 seq += line
         if seq:
@@ -64,8 +66,12 @@ class SiprosDatabase():
             seq_length = len(seq)
             self.seq_lengths.append(seq_length)
             self.faa[seq_id] = seq
+            self.taxonomy[seq_id] = ('na','na','na','na','na','na','na')
+            self.bactNOG[seq_id] = ('na','na','na')
             seq = ""
+            seq_id = ""
         inF.close()
+        print("\tTotal sequences: " + str(self.seq_count))
         
     def load_taxonomy (self, taxonomy_file):
         print("Loading taxonomy annotation file: " + taxonomy_file)
@@ -85,13 +91,8 @@ class SiprosDatabase():
                 self.taxonomy[seq_id] = (dom,phy,cla,odr,fam,gen,spe)
                 annotated_count += 1
         inF.close()
-        print("Annotated count: "+str(annotated_count))
-        unannotated_count = 0
-        for seq_id in self.faa:
-            if seq_id not in self.taxonomy:
-                self.taxonomy[seq_id] = ('na','na','na','na','na','na','na')
-            unannotated_count += 1
-        print("Unannotated count: "+str(unannotated_count))
+        print("\tAnnotated: "+str(annotated_count))
+        print("\tUnannotated: "+str(len(self.taxonomy) - annotated_count))
         
     def load_bactNOG (self, bactNOG_file):
         print("Loading bactNOG annotation file: " + bactNOG_file)
@@ -107,13 +108,8 @@ class SiprosDatabase():
                 self.bactNOG[seq_id] = (nog,cat,des)
                 annotated_count += 1
         inF.close()
-        print("Annotated count: "+str(annotated_count))
-        unannotated_count = 0
-        for seq_id in self.faa:
-            if seq_id not in self.bactNOG:
-                self.bactNOG[seq_id] = ('na','na','na')
-                unannotated_count += 1
-        print("Unannotated count: "+str(unannotated_count))
+        print("\tAnnotated: "+str(annotated_count))
+        print("\tUnannotated: "+str(len(self.bactNOG) - annotated_count))
                 
 #------------------------------------------------------------------#        
 #                     Data Access Methods                          #
@@ -141,10 +137,9 @@ class SiprosDatabase():
         self.cat_counts = [0.0]*len(cat_list)
         for seq_id in self.bactNOG:
             nog,cat,des = self.bactNOG[seq_id]
-            self.cats = []
-            self.parse_cat(cat)
-            for c in self.cats:
-                self.cat_counts[cat_indexes[c]] += 1/len(self.cats)
+            parsed_cat = self.parse_cat(cat)
+            for c in parsed_cat:
+                self.cat_counts[cat_indexes[c]] += 1/len(parsed_cat)
         for n in range(len(cat_list)):
             category = cat_list[n]
             count = self.cat_counts[n]
@@ -153,7 +148,7 @@ class SiprosDatabase():
             fig = plt.figure()
             ax = fig.add_subplot(111)
             ## the data
-            N = 27                            # number of bactNOG categories
+            N = len(cat_list)                 # number of bactNOG categories
             ## necessary variables
             ind = np.arange(N)                # the x locations for the groups
             width = 0.35                      # the width of the bars
@@ -176,12 +171,13 @@ class SiprosDatabase():
 #------------------------------------------------------------------#
 
     def parse_cat (self,cat):
-        self.cats = []
+        parsed_cat = []
         if cat == 'na':
-            self.cats = ['na']
+            parsed_cat = ['na']
         else:
             for c in cat:
-                self.cats.append(c)
+                parsed_cat.append(c)
+        return(parsed_cat)
                 
 #------------------------------------------------------------------#
 #                      IN PROGRESS                                 #
@@ -189,65 +185,6 @@ class SiprosDatabase():
 
 """
 #------------------------------------------------------------------#
-def MakeSummaries (dictMap,catDict,cdsList):
-    cogDict = {};
-    speDict = {};
-    phyDict = {};
-    claDict = {};
-    ordDict = {};
-    famDict = {};
-    for pro in cdsList:
-        (species,phyla,classs,order,family,cogcat) = dictMap[pro];
-        cList = ParseCogs(cogcat);
-        cCount = 1.0/len(cList);
-        for c in cList:
-            cogDict[c] = cogDict.get(c,0.0)+cCount;
-            cPos = catDict[c];
-            speDict[species] = UpdateListElement(speDict.get(species,[0.0]*26),cPos,cCount);
-            phyDict[phyla] = UpdateListElement(phyDict.get(phyla,[0.0]*26),cPos,cCount);
-            claDict[classs] = UpdateListElement(claDict.get(classs,[0.0]*26),cPos,cCount);
-            ordDict[order] = UpdateListElement(ordDict.get(order,[0.0]*26),cPos,cCount);
-            famDict[family] = UpdateListElement(famDict.get(family,[0.0]*26),cPos,cCount);
-    return(cogDict,speDict,phyDict,claDict,ordDict,famDict);
-        
-def ParseCogs (aString):
-    bList = [];
-    if 'N|A' in aString:
-        bList = ['N|A'];
-    else:
-        for x in aString:
-            bList.append(x);
-    return(bList);
 
-def UpdateListElement (aList, i, n):
-    aList[i] = aList[i] + n;
-    return(aList);
-
-def WriteTaxaSummary (aDict, outFile, aType):
-    fOUT = io.open(outFile, 'a');
-    fOUT.write(unicode(aType+"\tA\tB\tC\tD\tE\tF\tG\tH\tI\tJ\tK\tL\tM\tN\tO\tP\tQ\tR\tS\tT\tU\tV\tW\tX\tZ\tN|A\n"));
-    for k in aDict:
-        cList = aDict[k];
-        aList = [str(x) for x in cList];
-        outString = "\t".join(aList)
-        fOUT.write(unicode(k+"\t"+outString+"\n"));
-    fOUT.write(unicode("\n#############################\n"));
-    fOUT.close();
-    return();    
-
-def WriteCogSummary (aDict, outFile):
-    fOUT = io.open(outFile, 'a');
-    fOUT.write(unicode("COG\tCount\n"));
-    for c in aDict:
-        count = str(aDict[c]);
-        fOUT.write(unicode(c+"\t"+count+"\n"));
-    fOUT.close();
-    return();
-
-def MakeCogCatDict ():
-    CogCatDict = {'A':0,'B':1,'C':2,'D':3,'E':4,'F':5,'G':6,'H':7,'I':8,
-              'J':9,'K':10,'L':11,'M':12,'N':13,'O':14,'P':15,'Q':16,
-              'R':17,'S':18,'T':19,'U':20,'V':21,'W':22,'X':23,'Z':24,'N|A':25}
-    return(CogCatDict);
 """
 
