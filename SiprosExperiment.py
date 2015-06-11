@@ -25,10 +25,15 @@ This Class provides code for the creation of a Sipros proteomics experiment obje
 
 import io
 import sys
-from sip.SiprosSample import SiprosSample
+import sip
 import numpy as np
 from skbio.diversity.beta import pw_distances as pwd
 from skbio.stats.distance import permanova
+from matplotlib.mlab import PCA
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import proj3d
+
 
 class SiprosExperiment():
     
@@ -139,14 +144,17 @@ class SiprosExperiment():
             self.speciesList.append(S)
         self.data = np.asarray(self.countArray)
         self.data_eudm = pwd(self.data, self.speciesList, "euclidean")
-        print("<> Use this data for performing permanova on NOG category distributions" +
-            "\n\t command: permanova(data_eudm,groupList,permutations = 999)" +
-            "\n\nAvailable <group>Lists:\n\tgenus, family, order, class, phylum" +
-            "\n\n*** from skbio.stats.distance import permanova" +
-            "\n*** from skbio.stats.distance import anosim")
-
-
-
+        print("Use this data for:" +
+              "\tPerforming PCoa" +
+              "\t <> from skbio.stats.ordination import PCoA" +
+              "\n\tPerforming permanova on NOG category distributions" +
+              "\n\t command: permanova(data_eudm,groupList,permutations = 999)" +
+              "\n\nAvailable <group>Lists:\n\tgenus, family, order, class, phylum" +
+              "\n\n*** from skbio.stats.distance import permanova" +
+              "\n*** from skbio.stats.distance import anosim")
+        
+            
+            
 
 #------------------------------------------------------------------#    
 #              Functions used in multiple Methods                  #

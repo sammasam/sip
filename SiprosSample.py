@@ -26,6 +26,8 @@ This Class provides code for the creation of a Sipros proteomics sample object
 
 import io
 import sys
+import pandas as pd
+import sip
 
 class SiprosSample():
     
@@ -39,6 +41,7 @@ class SiprosSample():
         self.pro_txt = pro_txt
         self.pep_txt = pep_txt
         self.proteins = {} # protein name : (sample_proteinID, (nog, cat, des), (dom,phy,cla,odr,fam,gen,spe))
+        self.peptides = {}
         self.spectra = {}
         self.enrichments = {}
         self.taxonomy = {}
@@ -50,6 +53,7 @@ class SiprosSample():
         self.unique_specCount = 0
         self.peptCount = 0
         self.unique_peptCount = 0
+        self.print_metadata()
         self.load_proteins()
         self.load_peptides()
         self.annotate_taxonomy()
@@ -57,11 +61,16 @@ class SiprosSample():
         self.build_sample_summary()
     
 #------------------------------------------------------------------#
-#                    Data Input/Calculation Methods                #
+#                    Object Initialization Methods                 #
 #------------------------------------------------------------------#
 
+    def print_metadata (self):
+        print("SiprosSample Object Created:" +
+              "\n\tName : "+self.name+"\n\tLocation : "+self.location+
+              "\n\tTreatment : "+self.treatment+"\n\tTimepoint : "+self.timepoint)
+    
     def load_proteins (self):
-        print("<> Loading pro.txt file: " + self.pro_txt)
+        print("Loading pro.txt file: " + self.pro_txt)
         inFile = io.open(self.pro_txt)
         for line in inFile:
             if line[0] != '#':
@@ -74,25 +83,29 @@ class SiprosSample():
                     if self.proteinString[0] != "{":
                         self.unique_protCount += 1
                     
-                    # update all dictionaries with protein IDs #
+                    # initialize all dictionaries with protein IDs #
                     self.pro_to_list()
                     for p in self.proteinList:
                         self.proteins[p] = [self.proteinString,('na','na','na'),('na','na','na','na','na','na','na')]
-                    self.spectra[self.proteinString] = int(listLine[3])
+                    self.unique_spectra[self.proteinString] = int(listLine[3])
+                    self.peptides[self.proteinString] = [0,0]
                     self.enrichments[self.proteinString] = [0.0]*101 # bins 0% to 100%
                     self.taxonomy[self.proteinString] = ['na','na','na','na','na','na','na'] # dom|phy|cla|ord|fam|gen|spe
                     self.bactNOG[self.proteinString] = ['na','na','na'] # bactNOG|NOGcategory|description
         inFile.close();
-        print("\tNumber of Unique Protein IDs: " + str(self.unique_protCount))
-        print("\tNumber of Total Protein IDs: " + str(self.protCount))
+        print("\tUnique Protein IDs: " + str(self.unique_protCount))
+        print("\tTotal Protein IDs: " + str(self.protCount))
         
     def load_peptides (self):
-        print("<> Loading pep.txt file: " + self.pep_txt)
+        print("Loading pep.txt file: " + self.pep_txt)
         inFile = io.open(self.pep_txt)
         for line in inFile:
             if line[0] != '#':
                 listLine = line.strip().split("\t")
-                if listLine[0] != 'IdentifiedPeptide':
+                if listLine[5] == 'T':
+                    self.peptCount += 1
+                    if len(proSet) == 1:
+                        self.unique_peptCount += 1
                     proIDs = []
                     self.proteinString = listLine[3]
                     self.pro_to_list()
@@ -101,19 +114,18 @@ class SiprosSample():
                             pro = self.proteins[p][0]
                             proIDs.append(pro)
                     proSet = set(proIDs)
-                    
-                    # count peptides #
-                    if listLine[5] == 'T':
-                        self.peptCount += 1
-                    if len(proSet) == 1:
-                        self.unique_peptCount += 1
-                    
                     if len(proSet) > 0:
                         self.enrichmentString = listLine[10]
                         self.parse_enrichments()
                         val = 1.0/len(proSet)
                         
-                        
+                        # count peptides #
+                        for pp in proSet:
+                            if len(proSet) == 1:
+                                self.peptides[pp][0] += 1
+                            else:
+                                self.peptides[pp][1] += 1
+                                
                         # count spectra #
                         self.specCount += len(self.enrichmentList)
                         if len(proSet) == 1:
@@ -124,13 +136,13 @@ class SiprosSample():
                             for prot in proSet:
                                 self.enrichments[prot][enr] += val
         inFile.close();
-        print("\tNumber of Unique Spectra: " + str(self.unique_specCount))
-        print("\tNumber of Total Spectra: " + str(self.specCount))
-        print("\tNumber of Unique Peptide IDs: " + str(self.unique_peptCount))
-        print("\tNumber of Total Peptide IDs: " + str(self.peptCount))
+        print("\tUnique Spectra: " + str(self.unique_specCount))
+        print("\Total Spectra: " + str(self.specCount))
+        print("\tUnique Peptide IDs: " + str(self.unique_peptCount))
+        print("\tTotal Peptide IDs: " + str(self.peptCount))
 
     def annotate_bactNOG (self):
-        print("<> Loading bactNOG annotation file: " + self.bactNOG_file)
+        print("Loading bactNOG annotation file: " + self.bactNOG_file)
         inFile = io.open(self.bactNOG_file)                                                              
         for line in inFile:
             listLine = line.strip().split("\t")
@@ -142,7 +154,7 @@ class SiprosSample():
                 if pro in self.proteins:
                     self.proteins[pro][1] = (nog,cat,des)
         inFile.close()
-        print("<> Annotating protein IDs with bactNOGs")
+        print("Annotating protein IDs with bactNOGs")
         for p in self.bactNOG:
             self.proteinString = p
             self.pro_to_list()
@@ -150,23 +162,23 @@ class SiprosSample():
             self.bactNOG[p] = self.lcf
             
     def annotate_taxonomy (self):
-        print("<> Loading taxonomy annotation file: " + self.taxonomy_file)
+        print("Loading taxonomy annotation file: " + self.taxonomy_file)
         inFile = io.open(self.taxonomy_file)                                                              
         for line in inFile:
             listLine = line.strip().split("\t")
             if listLine[0] != "ProteinID":
-                pro = listLine[0];
-                dom = listLine[1];
-                phy = listLine[2];
-                cla = listLine[3];
-                odr = listLine[4];
-                fam = listLine[5];
-                gen = listLine[6];
+                pro = listLine[0]
+                dom = listLine[1]
+                phy = listLine[2]
+                cla = listLine[3]
+                odr = listLine[4]
+                fam = listLine[5]
+                gen = listLine[6]
                 spe = listLine[7]
                 if pro in self.proteins:
                     self.proteins[pro][2] = (dom,phy,cla,odr,fam,gen,spe)
         inFile.close()
-        print("<> Annotating protein IDs with taxonomy")
+        print("Annotating protein IDs with taxonomy")
         for p in self.taxonomy:
             self.proteinString = p
             self.pro_to_list()
@@ -175,11 +187,12 @@ class SiprosSample():
             
     def build_sample_summary (self):
         self.summary = {}
-        print("<>Calculating summary of spectra and protein IDs by taxa and NOG category")
+        print("Calculating summary of spectra and protein IDs by taxa and NOG category")
         for p in self.spectra:
             self.new_summary_entry = []
             usc = self.spectra[p] # integer of unique spectral counts
             enr = self.enrichments[p] # list of spectral counts by index/bin 0% to 100%
+            pep = self.peptides[p]
             [nog,cat,des] = self.bactNOG[p]
             [dom,phy,cla,odr,fam,gen,spe] = self.taxonomy[p]
             
@@ -244,8 +257,8 @@ class SiprosSample():
 
     def taxaXnog_summary (self, rank): # uses self.summary dictionary rank : {taxa: {nog cat: [pro count, usc, [enrList]]}}
         outF = self.name+".pro.taxaXnog_summary."+rank+".txt"
-        print("<> Writing summary for taxa and bacNOG categories to file: " + outF)
-        print("<> Summary for taxonomic rank: " + rank)
+        print("Writing summary for taxa and bacNOG categories to file: " + outF)
+        print("Summary for taxonomic rank: " + rank)
         outFile = io.open(outF, 'a')
         header = unicode("Sample\tRank\tTaxa\tNOG_category\tProIDs\tUSC\tBSC\tLSC\tPBSC\tPLSC\tENRV\tENRF\t0--1\t2--10\t11--19\t" +
                          "20--28\t29--37\t38--46\t47--55\t56--64\t65--73\t74--82\t83--91\t92--100\n")
@@ -284,8 +297,8 @@ class SiprosSample():
     
     def taxa_summary (self, rank): # uses self.summary dictionary rank : {taxa: {nog cat: [pro count, usc, [enrList]]}}
         outF = self.name+".pro.taxa_summary."+rank+".txt"
-        print("<> Writing summary for taxa to file: " + outF)
-        print("<> Summary for taxonomic rank: " + rank)
+        print("Writing summary for taxa to file: " + outF)
+        print("Summary for taxonomic rank: " + rank)
         outFile = io.open(outF, 'a')
         header = unicode("Sample\tRank\tTaxa\tProIDs\tUSC\tBSC\tLSC\tPBSC\tPLSC\tENRV\tENRF\t0--1\t2--10\t11--19\t" +
                          "20--28\t29--37\t38--46\t47--55\t56--64\t65--73\t74--82\t83--91\t92--100\n")
