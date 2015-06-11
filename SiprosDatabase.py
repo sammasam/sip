@@ -71,7 +71,7 @@ class SiprosDatabase():
             seq = ""
             seq_id = ""
         inF.close()
-        print("\tTotal sequences: " + str(self.seq_count))
+        print(" - Total sequences: " + str(self.seq_count))
         
     def load_taxonomy (self, taxonomy_file):
         print("Loading taxonomy annotation file: " + taxonomy_file)
@@ -91,8 +91,8 @@ class SiprosDatabase():
                 self.taxonomy[seq_id] = (dom,phy,cla,odr,fam,gen,spe)
                 annotated_count += 1
         inF.close()
-        print("\tAnnotated: "+str(annotated_count))
-        print("\tUnannotated: "+str(len(self.taxonomy) - annotated_count))
+        print(" - Annotated: "+str(annotated_count))
+        print(" - Unannotated: "+str(len(self.taxonomy) - annotated_count))
         
     def load_bactNOG (self, bactNOG_file):
         print("Loading bactNOG annotation file: " + bactNOG_file)
@@ -108,8 +108,8 @@ class SiprosDatabase():
                 self.bactNOG[seq_id] = (nog,cat,des)
                 annotated_count += 1
         inF.close()
-        print("\tAnnotated: "+str(annotated_count))
-        print("\tUnannotated: "+str(len(self.bactNOG) - annotated_count))
+        print(" - Annotated: "+str(annotated_count))
+        print(" - Unannotated: "+str(len(self.bactNOG) - annotated_count))
                 
 #------------------------------------------------------------------#        
 #                     Data Access Methods                          #
@@ -163,7 +163,50 @@ class SiprosDatabase():
             ax.set_xticks(ind+width)
             xtickNames = ax.set_xticklabels(xTickMarks)
             plt.setp(xtickNames, rotation=0, fontsize=12)
+            plt.show()       
+            
+    def taxonomy_counts (self, rank, min_count=20, plot="no"):
+        print("Counting taxa in database\n - Rank: "+rank)
+        rank_list = ['domain','phylum','class','order','family','genus','species']
+        rank_index = {'domain':0,'phylum':1,'class':2,'order':3,'family':4,'genus':5,'species':6}
+        self.rank_counts = {}
+        self.rank_counts[rank] = {}
+        taxa_list = []
+        taxa_counts = []
+        for seq_id in self.taxonomy:
+            name = self.taxonomy[seq_id][rank_index[rank]]
+            self.rank_counts[rank][name] = self.rank_counts[rank].get(name,0) + 1
+        num_taxa = len(self.rank_counts[rank])
+        for n in self.rank_counts[rank]:
+            count = self.rank_counts[rank][n]
+            #print("\t"+n+"\t"+str(count))
+            if count >= min_count:
+                taxa_list.append(n)
+        taxa_list.sort()
+        for t in taxa_list:    
+            taxa_counts.append(self.rank_counts[rank][t])
+        print(" - Total taxa: "+str(num_taxa))
+        if plot == "yes":
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ## the data
+            N = len(taxa_list)                # number of taxa at selected rank
+            ## necessary variables
+            ind = np.arange(N)                # the x locations for the groups
+            width = 0.35                      # the width of the bars
+            ## the bars
+            rects = ax.bar(ind, taxa_counts, width,color='black')
+            # axes and labels
+            ax.set_xlim(-width,len(ind)+width)
+            ax.set_ylim(0,int(max(taxa_counts)+1))
+            ax.set_ylabel('Sequence Counts')
+            ax.set_title('Taxonomic Distribution of CDS')
+            xTickMarks = taxa_list
+            ax.set_xticks(ind+width)
+            xtickNames = ax.set_xticklabels(xTickMarks)
+            plt.setp(xtickNames, rotation=270, fontsize=10)
             plt.show()
+            
             
             
 #------------------------------------------------------------------#    
