@@ -2,7 +2,7 @@
 
 """
 Sam Bryson
-8 June 2015
+1 July 2015
 sammasam@gmail.com
 
 This Class provides code for the creation of a Sipros proteomics experiment object
@@ -31,6 +31,7 @@ from skbio.diversity.beta import pw_distances as pwd
 from skbio.stats.distance import permanova
 from matplotlib.mlab import PCA
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d import proj3d
 
@@ -66,7 +67,7 @@ class SiprosExperiment():
             self.samples_treatments.append(sample.treatment) 
             self.samples_timepoints.append(sample.timepoint)
             self.samples_locations.append(sample.location)
-            self.samples_bsc.append(sample.specCount)
+            self.samples_bsc.append(sample.spectra_count)
         self.samples_count = len(self.samples)
         self.calculate_normalization_factors()
         print("<>Sample count: "+str(self.samples_count))
@@ -92,6 +93,53 @@ class SiprosExperiment():
 #                       Report Methods                             #
 #------------------------------------------------------------------#
 
+    def plot_all_enrichments (self, plot="no"):
+        print("enrichment histogram for proteomics sample")
+        enr_list = ['0--1','2--10','11--19','20--28','29--37','38--46','47--55','56--64','65--73','74--82','83--91','92--100']
+        data_list = []
+        for sample in self.samples:
+            sample.enrichment_counts()
+            for i in range(1,len(sample.spectra_enr_counts)):
+                sample_data = [sample.name,enr_list[i],sample.spectra_enr_counts[i]/sample.spectra_count]
+                data_list.append(sample_data)
+                
+        dpoints = np.asarray(data_list)
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        
+        conditions = np.unique(dpoints[:,0])
+        categories = np.unique(dpoints[:,1])
+        # the space between each set of bars
+        space = 0.1
+        n = len(conditions)
+        width = (1 - space) / (len(conditions))
+        # Create a set of bars at each position
+        for i,cond in enumerate(conditions):
+            print "cond:", cond
+            indeces = range(1, len(categories)+1)
+            vals = dpoints[dpoints[:,0] == cond][:,2].astype(np.float)
+            pos = [j - (1 - space) / 2. + i * width for j in indeces]
+            ax.bar(pos, vals, width=width, label=cond, color=cm.Accent(float(i) / n))
+        # Set the max value for the y axis
+        y_vals = np.unique(dpoints[:,2])
+        y_vals = [float(x) for x in y_vals]
+        ax.set_ylim(0,max(y_vals)+0.01)        
+        # Set the x-axis tick labels to be equal to the categories
+        ax.set_xticks(indeces)
+        ax.set_xticklabels(enr_list[1:])
+        plt.setp(plt.xticks()[1], rotation=90)
+        # Add the axis labels
+        ax.set_ylabel("Proportion of Balanced Spectra")
+        ax.set_xlabel("Enrichment Bins")
+        # Add a legend
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles[::-1], labels[::-1], loc='upper right')
+        
+        #plt.savefig('barchart.svg')
+        plt.show()
+
+    """
     def nog_pbsc_test (self, min_pro_count):
         self.countArray = []
         self.domainList = []
@@ -154,7 +202,7 @@ class SiprosExperiment():
               "\n*** from skbio.stats.distance import anosim")
         
             
-            
+    """
 
 #------------------------------------------------------------------#    
 #              Functions used in multiple Methods                  #
