@@ -50,6 +50,9 @@ class SiprosExperiment():
         self.samples_norm_factors = []
         self.nog_nbsc = {}
         self.protiens = 0
+        
+        self.groups = []    # used in self.group_samples(self, sample_list, sample_name)
+        self.group_names = []
         #self.unique_protCount = 0
         #self.specCount = 0
         #self.unique_specCount = 0
@@ -88,58 +91,285 @@ class SiprosExperiment():
         bsc_avg = bsc_total/self.samples_count
         for bsc in self.samples_bsc:
             self.samples_norm_factors.append(bsc_avg/bsc)
-
+            
+    def group_samples (self, sample_list, sample_name):
+        self.groups.append(sample_list)
+        self.group_names.append(sample_name)
+            
+            
 #------------------------------------------------------------------#        
 #                       Report Methods                             #
 #------------------------------------------------------------------#
 
-    def plot_all_enrichments (self, plot="no"):
-        print("enrichment histogram for proteomics sample")
-        enr_list = ['0--1','2--10','11--19','20--28','29--37','38--46','47--55','56--64','65--73','74--82','83--91','92--100']
-        data_list = []
-        for sample in self.samples:
-            sample.enrichment_counts()
-            for i in range(1,len(sample.spectra_enr_counts)):
-                sample_data = [sample.name,enr_list[i],sample.spectra_enr_counts[i]/sample.spectra_count]
-                data_list.append(sample_data)
-                
-        dpoints = np.asarray(data_list)
-        
+    def make_bar_plot (self, data_array, labels_list, start_index = 0, error_bars = "no", fig_name = "", y_max = "", x_label = "", y_label = ""):
+        dpoints = np.asarray(data_array)
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        
-        conditions = np.unique(dpoints[:,0])
-        categories = np.unique(dpoints[:,1])
+        group_names = np.unique(dpoints[:,0])
+        division_names = np.unique(dpoints[:,1])
         # the space between each set of bars
         space = 0.1
-        n = len(conditions)
-        width = (1 - space) / (len(conditions))
+        n = len(group_names)
+        width = (1 - space) / (len(group_names))
         # Create a set of bars at each position
-        for i,cond in enumerate(conditions):
-            print "cond:", cond
-            indeces = range(1, len(categories)+1)
+        for i,cond in enumerate(group_names):
+            print "group:", cond
+            indeces = range(1, len(division_names)+1)
             vals = dpoints[dpoints[:,0] == cond][:,2].astype(np.float)
             pos = [j - (1 - space) / 2. + i * width for j in indeces]
-            ax.bar(pos, vals, width=width, label=cond, color=cm.Accent(float(i) / n))
+            if error_bars == "yes":
+                errs = dpoints[dpoints[:,0] == cond][:,3].astype(np.float) #use 4 th spot in data list for error value
+                ax.bar(pos, vals, width=width, label=cond, color=cm.Accent(float(i) / n) ,
+                       yerr = errs, error_kw = dict(ecolor='black', lw=1, capsize=1, capthick=1))
+            else:
+                ax.bar(pos, vals, width=width, label=cond, color=cm.Accent(float(i) / n))
         # Set the max value for the y axis
         y_vals = np.unique(dpoints[:,2])
         y_vals = [float(x) for x in y_vals]
-        ax.set_ylim(0,max(y_vals)+0.01)        
+        if y_max:
+            ax.set_ylim(0, y_max)
+        else:
+            ax.set_ylim(0,max(y_vals)+0.01)        
         # Set the x-axis tick labels to be equal to the categories
         ax.set_xticks(indeces)
-        ax.set_xticklabels(enr_list[1:])
+        ax.set_xticklabels(labels_list[start_index:])
         plt.setp(plt.xticks()[1], rotation=90)
         # Add the axis labels
-        ax.set_ylabel("Proportion of Balanced Spectra")
-        ax.set_xlabel("Enrichment Bins")
+        ax.set_ylabel(y_label)
+        ax.set_title(x_label)
         # Add a legend
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles[::-1], labels[::-1], loc='upper right')
-        
-        #plt.savefig('barchart.svg')
+        if fig_name:
+            plt.savefig(fig_name)
         plt.show()
+        
+        
+#------------------------------------------------------------------#
+#------------------------------------------------------------------#
 
-    """
+    def taxonomy_counts (self, rank, minimum_count=0, plot="no", data_type="spectra_counts", max_y = "", print_txt = "", save_fig = ""):
+        #print("Counting taxa in proteomics samples\n - Rank: "+rank)
+        rank_list = ['domain','phylum','class','order','family','genus','species']
+        rank_index = {'domain':0,'phylum':1,'class':2,'order':3,'family':4,'genus':5,'species':6}
+        # get counts for each taxa from each sample
+        self.taxa_counts_dict = {}
+        taxa_filter_dict = {}
+        for sample in self.samples:
+            sample.taxonomy_counts(rank, data=data_type)
+            self.taxa_counts_dict[sample.name] = {}
+            for taxa in sample.taxa_count_dict[sample.name]:
+                count = sample.taxa_count_dict[sample.name][taxa]
+                self.taxa_counts_dict[sample.name][taxa] = count
+                if taxa in taxa_filter_dict:
+                    taxa_filter_dict[taxa].append(count)
+                else:
+                    taxa_filter_dict[taxa] = [count]
+        # filter taxa by minimum count
+        taxa_list = []
+        for taxa in taxa_filter_dict:
+            count_list = taxa_filter_dict[taxa]
+            if max(count_list) >= minimum_count:
+                taxa_list.append(taxa)
+        taxa_set = set(taxa_list)
+        taxa_list = list(taxa_set)
+        taxa_list.sort()
+        # put counts in an array for plotting
+        self.taxa_counts_list = []
+        for sample in self.samples:
+            for taxa in taxa_list:
+                data_point = [sample.name, taxa, self.taxa_counts_dict[sample.name].get(taxa,0.0)]
+                self.taxa_counts_list.append(data_point)
+        if plot == "yes":
+            self.make_bar_plot (self.taxa_counts_list, taxa_list, start_index = 0, error_bars = "",
+                                fig_name = save_fig, y_max = max_y, x_label = "Taxa", y_label = data_type)
+
+#------------------------------------------------------------------#
+
+    def group_average_taxonomy_counts (self, rank, minimum_count=0, plot="no", data_type="spectra_counts", max_y = "", print_txt = "", save_fig = ""):
+        #print("Counting taxa in proteomics samples\n - Rank: "+rank)
+        rank_list = ['domain','phylum','class','order','family','genus','species']
+        rank_index = {'domain':0,'phylum':1,'class':2,'order':3,'family':4,'genus':5,'species':6}
+        # get counts for each taxa from each sample
+        self.group_taxa_counts_dict = {}
+        taxa_filter_dict = {}
+        for g in range(len(self.group_names)):
+            group_name = self.group_names[g]
+            group_list = self.groups[g]
+            self.group_taxa_counts_dict[group_name] = {}
+            for s in range(len(group_list)):
+                sample = group_list[s]
+                sample.taxonomy_counts(rank, data=data_type)
+                for taxa in sample.taxa_count_dict[sample.name]:
+                    if data_type == "spectra_counts":
+                        count = sample.taxa_count_dict[sample.name][taxa]/sample.spectra_count
+                    else:
+                        count = sample.taxa_count_dict[sample.name][taxa]
+                    if taxa in self.group_taxa_counts_dict[group_name]:
+                        self.group_taxa_counts_dict[group_name][taxa].append(count)
+                    else:
+                        self.group_taxa_counts_dict[group_name][taxa] = [count]
+                    if taxa in taxa_filter_dict:
+                        taxa_filter_dict[taxa].append(count)
+                    else:
+                        taxa_filter_dict[taxa] = [count]
+        # filter taxa by minimum count
+        taxa_list = []
+        for taxa in taxa_filter_dict:
+            count_list = taxa_filter_dict[taxa]
+            if max(count_list) >= minimum_count:
+                taxa_list.append(taxa)
+        taxa_set = set(taxa_list)
+        taxa_list = list(taxa_set)
+        taxa_list.sort()
+        # put counts in an array for plotting
+        self.group_taxa_counts_list = []
+        for group_name, group_list in zip(self.group_names, self.groups):
+            for taxa in taxa_list:
+                count_list = np.asarray(self.group_taxa_counts_dict[group_name].get(taxa, [0.0]*len(group_list)))
+                average_count = np.mean(count_list)
+                if average_count > 0.0:
+                    std_dev_count = np.std(count_list)
+                else:
+                    std_dev_count = 0.0
+                data_point = [group_name, taxa, average_count, std_dev_count]
+                self.group_taxa_counts_list.append(data_point)
+        if plot == "yes":
+            self.make_bar_plot (self.group_taxa_counts_list, taxa_list, start_index = 0, error_bars = "yes",
+                                fig_name = save_fig, y_max = max_y, x_label = "Taxa", y_label = data_type)
+
+#------------------------------------------------------------------#
+
+    def nog_category_counts (self, plot="no", data_type="spectra_counts", max_y = "", print_txt = "", save_fig = ""):
+        #print("bactNOG category counts in proteomics sample\n\tCategory\tCount")
+        cat_indexes = {'A':0,'B':1,'C':2,'D':3,'E':4,'F':5,'G':6,'H':7,'I':8,
+                       'J':9,'K':10,'L':11,'M':12,'N':13,'O':14,'P':15,'Q':16,
+                       'R':17,'S':18,'T':19,'U':20,'V':21,'W':22,'X':23,'Y':24,'Z':25,'na':26,'u':27}
+        cat_list = ['A','B','C','D','E','F','G','H','I','J','K','L','M',
+                    'N','O','P','Q','R','S','T','U','V','W','X','Y','Z','na','u']
+        # get counts for each nog category
+        self.nog_category_counts_dict = {}
+        for sample in self.samples:
+            sample.nog_category_counts(data=data_type)
+            self.nog_category_counts_dict[sample.name] = {}
+            for cat in cat_list:
+                count = sample.nog_category_count_dict[sample.name][cat]
+                self.nog_category_counts_dict[sample.name][cat] = count
+        # put counts in an array for plotting
+        self.nog_category_counts_list = []
+        for sample in self.samples:
+            for cat in cat_list:
+                data_point = [sample.name, cat, self.nog_category_counts_dict[sample.name][cat]]
+                self.nog_category_counts_list.append(data_point)
+        if plot == "yes":
+            self.make_bar_plot (self.nog_category_counts_list, cat_list, start_index = 0, error_bars = "",
+                                fig_name = save_fig, y_max = max_y, x_label = "bactNOG Categories", y_label = data_type)
+
+#------------------------------------------------------------------#
+    
+    def group_average_nog_category_counts (self, plot="no", data_type="spectra_counts", max_y = "", print_txt = "", save_fig = ""):
+        #print("bactNOG category counts in proteomics sample\n\tCategory\tCount")
+        cat_indexes = {'A':0,'B':1,'C':2,'D':3,'E':4,'F':5,'G':6,'H':7,'I':8,
+                       'J':9,'K':10,'L':11,'M':12,'N':13,'O':14,'P':15,'Q':16,
+                       'R':17,'S':18,'T':19,'U':20,'V':21,'W':22,'X':23,'Y':24,'Z':25,'na':26,'u':27}
+        cat_list = ['A','B','C','D','E','F','G','H','I','J','K','L','M',
+                    'N','O','P','Q','R','S','T','U','V','W','X','Y','Z','na','u']
+        # get counts for each nog category
+        self.group_average_nog_category_counts_dict = {}
+        for g in range(len(self.group_names)):
+            group_name = self.group_names[g]
+            group_list = self.groups[g]
+            self.group_average_nog_category_counts_dict[group_name] = {}
+            for s in range(len(group_list)):
+                sample = group_list[s]
+                sample.nog_category_counts(data=data_type)
+                for cat in cat_list:
+                    count = sample.nog_category_count_dict[sample.name][cat]
+                    if data_type == "spectra_counts":
+                        count = sample.nog_category_count_dict[sample.name][cat]/sample.spectra_count
+                    else:
+                        count = sample.nog_category_count_dict[sample.name][cat]
+                    if cat in self.group_average_nog_category_counts_dict[group_name]:
+                        self.group_average_nog_category_counts_dict[group_name][cat].append(count)
+                    else:
+                        self.group_average_nog_category_counts_dict[group_name][cat] = [count]
+        # put counts in an array for plotting
+        self.group_average_nog_category_counts_list = []
+        for group_name, group_list in zip(self.group_names, self.groups):
+            for cat in cat_list:
+                count_list = np.asarray(self.group_average_nog_category_counts_dict[group_name].get(cat, [0.0]*len(group_list)))
+                average_count = np.mean(count_list)
+                if average_count > 0.0:
+                    std_dev_count = np.std(count_list)
+                else:
+                    std_dev_count = 0.0
+                data_point = [group_name, cat, average_count, std_dev_count]
+                self.group_average_nog_category_counts_list.append(data_point)
+        if plot == "yes":
+            self.make_bar_plot (self.group_average_nog_category_counts_list, cat_list, start_index = 0, error_bars = "yes",
+                                fig_name = save_fig, y_max = max_y, x_label = "bactNOG Categories", y_label = data_type)
+    
+#------------------------------------------------------------------#
+    
+    def enrichment_counts (self, plot = "no", max_y = "", print_txt = "", save_fig = ""):
+        enr_list = ['0--1','2--10','11--19','20--28','29--37','38--46','47--55','56--64','65--73','74--82','83--91','92--100']
+        # get spectral counts for each enrichment bin
+        self.enrichment_counts_dict = {}
+        for sample in self.samples:
+            sample.enrichment_counts(max_y = max_y)
+            self.enrichment_counts_dict[sample.name] = {}
+            for enr in enr_list:
+                count = sample.enrichment_count_dict[sample.name][enr]
+                self.enrichment_counts_dict[sample.name][enr] = count
+        # put counts in an array for plotting
+        self.enrichment_counts_list = []
+        for sample in self.samples:
+            for enr in enr_list[1:]:
+                data_point = [sample.name, enr, self.enrichment_counts_dict[sample.name][enr]/sample.spectra_count]
+                self.enrichment_counts_list.append(data_point)
+        if plot == "yes":
+            self.make_bar_plot (self.enrichment_counts_list, enr_list, start_index = 1, error_bars = "",
+                                fig_name = save_fig, y_max = max_y , x_label = "%Enrichment Bins",
+                                y_label = "Proportion of Balanced Spectral Counts")
+    
+#------------------------------------------------------------------#
+
+    def group_average_enrichment_counts (self, plot = "no", max_y = "", print_txt = "", save_fig = ""):
+        enr_list = ['0--1','2--10','11--19','20--28','29--37','38--46','47--55','56--64','65--73','74--82','83--91','92--100']
+        # get spectral counts for each enrichment bin
+        self.group_average_enrichment_counts_dict = {}
+        for g in range(len(self.group_names)):
+            group_name = self.group_names[g]
+            group_list = self.groups[g]
+            self.group_average_enrichment_counts_dict[group_name] = {}
+            for s in range(len(group_list)):
+                sample = group_list[s]
+                sample.enrichment_counts(max_y = max_y)
+                for enr in enr_list:
+                    count = sample.enrichment_count_dict[sample.name][enr]/sample.spectra_count
+                    if enr in self.group_average_enrichment_counts_dict[group_name]:
+                        self.group_average_enrichment_counts_dict[group_name][enr].append(count)
+                    else:
+                        self.group_average_enrichment_counts_dict[group_name][enr] = [count]
+        # put counts in an array for plotting
+        self.group_average_enrichment_counts_list = []
+        for group_name, group_list in zip(self.group_names, self.groups):
+            for enr in enr_list[1:]:
+                count_list = np.asarray(self.group_average_enrichment_counts_dict[group_name].get(enr, [0.0]*len(group_list)))
+                average_count = np.mean(count_list)
+                if average_count > 0.0:
+                    std_dev_count = np.std(count_list)
+                else:
+                    std_dev_count = 0.0
+                data_point = [group_name, enr, average_count, std_dev_count]
+                self.group_average_enrichment_counts_list.append(data_point)
+        if plot == "yes":
+            self.make_bar_plot (self.group_average_enrichment_counts_list, enr_list, start_index = 1, error_bars = "yes",
+                                fig_name = save_fig, y_max = max_y , x_label = "%Enrichment Bins",
+                                y_label = "Proportion of Balanced Spectral Counts")
+
+#------------------------------------------------------------------#
+    """ 
     def nog_pbsc_test (self, min_pro_count):
         self.countArray = []
         self.domainList = []

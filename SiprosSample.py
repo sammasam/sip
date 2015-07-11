@@ -26,10 +26,13 @@ This Class provides code for the creation of a Sipros proteomics sample object
 
 import io
 import sys
-import pandas as pd
-import sip
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from matplotlib import gridspec
 import numpy as np
+import scipy.stats as stats #t_stat, p_val = stats.ttest_ind(sample1, sample2, equal_var=False)
+                            #chisq,  p_val = scipy.stats.chisquare(f_obs, f_exp)
+
 
 class SiprosSample():
     
@@ -182,132 +185,138 @@ class SiprosSample():
 #                       Report Methods                             #
 #------------------------------------------------------------------#
 
-    def taxonomy_counts (self, rank, min_count=20, plot="no", data="spectra_counts"):
-        print("Counting taxa in proteomics sample\n - Rank: "+rank)
+    def taxonomy_counts (self, rank, min_count=0, plot="no", data="spectra_counts", print_txt = "", save_fig = ""):
+        #print("Counting taxa in proteomics sample\n - Rank: "+rank)
         rank_list = ['domain','phylum','class','order','family','genus','species']
         rank_index = {'domain':0,'phylum':1,'class':2,'order':3,'family':4,'genus':5,'species':6}
-        self.rank_counts = {}
-        self.rank_counts[rank] = {}
-        taxa_list = []
-        taxa_counts = []
+        # get counts for each nog category
+        self.taxa_count_dict = {}
+        self.taxa_count_dict[self.name] = {}
         for protein_string in self.proteins:
             protein_taxonomy = self.proteins[protein_string]['taxonomy']    # [dom,phy,cla,odr,fam,gen,spe]
             name = protein_taxonomy[rank_index[rank]]
             if data == 'spectra_counts':
-                self.rank_counts[rank][name] = self.rank_counts[rank].get(name,0.0) + sum(self.proteins[protein_string]['enrichments'])
+                self.taxa_count_dict[self.name][name] = self.taxa_count_dict[self.name].get(name, 0.0) + sum(self.proteins[protein_string]['enrichments'])
             if data == 'protein_counts':
-                self.rank_counts[rank][name] = self.rank_counts[rank].get(name,0) + 1
-        num_taxa = len(self.rank_counts[rank])
-        for n in self.rank_counts[rank]:
-            count = self.rank_counts[rank][n]
-            #print("\t"+n+"\t"+str(count))
+                self.taxa_count_dict[self.name][name] = self.taxa_count_dict[self.name].get(name, 0.0) + 1
+        # filter taxa list by min count for plotting
+        taxa_list = []
+        for taxa in self.taxa_count_dict[self.name]:
+            count = self.taxa_count_dict[self.name][taxa]
             if count >= min_count:
-                taxa_list.append(n)
-        taxa_list.sort()
-        for t in taxa_list:    
-            taxa_counts.append(self.rank_counts[rank][t])
-        print(" - Total taxa: "+str(num_taxa))
+                taxa_list.append(taxa)
+            taxa_set = set(taxa_list)
+            taxa_list = list(taxa_set)
+            taxa_list.sort()
+        # put counts in an array for plotting
+        self.taxa_count_list = []   
+        for taxa in taxa_list:
+            data_point = [self.name, taxa, self.taxa_count_dict[self.name][taxa]]
+            self.taxa_count_list.append(data_point)
         if plot == "yes":
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ## the data
-            N = len(taxa_list)                # number of taxa at selected rank
-            ## necessary variables
-            ind = np.arange(N)                # the x locations for the groups
-            width = 0.35                      # the width of the bars
-            ## the bars
-            rects = ax.bar(ind, taxa_counts, width,color='black')
-            # axes and labels
-            ax.set_xlim(-width,len(ind)+width)
-            ax.set_ylim(0,int(max(taxa_counts)+1))
-            if data == 'spectra_counts':
-                ax.set_ylabel('Balanced Spectra Counts')
-            if data == 'protein_counts':
-                ax.set_ylabel('Protein Id Counts')
-            ax.set_title('Taxonomic Distribution')
-            xTickMarks = taxa_list
-            ax.set_xticks(ind+width)
-            xtickNames = ax.set_xticklabels(xTickMarks)
-            plt.setp(xtickNames, rotation=270, fontsize=10)
-            plt.show()
+            self.make_bar_plot (self.taxa_count_list, taxa_list, start_index = 0, error_list = "", fig_name = save_fig, y_max = "", x_label = "Taxa", y_label = data)
 
-    def nog_category_counts (self, plot="no", data="spectra_counts"):
-        print("bactNOG category counts in proteomics sample\n\tCategory\tCount")
+#------------------------------------------------------------------#
+
+    def nog_category_counts (self, plot="no", data="spectra_counts",  print_txt = "", save_fig = ""):
+        #print("bactNOG category counts in proteomics sample\n\tCategory\tCount")
         cat_indexes = {'A':0,'B':1,'C':2,'D':3,'E':4,'F':5,'G':6,'H':7,'I':8,
                        'J':9,'K':10,'L':11,'M':12,'N':13,'O':14,'P':15,'Q':16,
                        'R':17,'S':18,'T':19,'U':20,'V':21,'W':22,'X':23,'Y':24,'Z':25,'na':26,'u':27}
         cat_list = ['A','B','C','D','E','F','G','H','I','J','K','L','M',
                     'N','O','P','Q','R','S','T','U','V','W','X','Y','Z','na','u']
-        self.protein_cat_counts = [0.0]*len(cat_list)
-        self.spectra_cat_counts = [0.0]*len(cat_list)
+        # get counts for each nog category
+        self.nog_category_count_dict = {}
+        self.nog_category_count_dict[self.name] = {}
+        for cat in cat_list:
+            self.nog_category_count_dict[self.name][cat] = 0.0
         for protein_string in self.proteins:
             [nog,cat,des] = self.proteins[protein_string]['bactNOG']
             parsed_cat = self.parse_cat(cat)
             for c in parsed_cat:
-                self.spectra_cat_counts[cat_indexes[c]] += sum(self.proteins[protein_string]['enrichments'])/len(parsed_cat) # add fraction of total spectra
-                self.protein_cat_counts[cat_indexes[c]] += 1/len(parsed_cat)
-        for n in range(len(cat_list)):
-            category = cat_list[n]
-            if data == 'spectra_counts':
-                count = self.spectra_cat_counts[n]
-            if data == 'protein_counts':
-                count = self.protein_cat_counts[n]
-            print("\t"+category+"\t"+str(count))
+                if data == "spectra_counts":
+                    self.nog_category_count_dict[self.name][c] += sum(self.proteins[protein_string]['enrichments'])/len(parsed_cat)
+                if data == "protein_counts":
+                    self.nog_category_count_dict[self.name][c] += 1/len(parsed_cat)
+        # put counts in an array for plotting
+        self.nog_category_count_list = []   
+        for cat in cat_list:
+            data_point = [self.name, cat, self.nog_category_count_dict[self.name][cat]]
+            self.nog_category_count_list.append(data_point)
         if plot == "yes":
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ## the data
-            N = len(cat_list)                 # number of bactNOG categories
-            ## necessary variables
-            ind = np.arange(N)                # the x locations for the groups
-            width = 0.35                      # the width of the bars
-            ## the bars
-            if data == 'spectra_counts':
-                rects = ax.bar(ind, self.spectra_cat_counts, width,color='black')
-            if data == 'protein_counts':
-                rects = ax.bar(ind, self.protein_cat_counts, width,color='black')
-            # axes and labels
-            ax.set_xlim(-width,len(ind)+width)
-            if data == 'spectra_counts':
-                ax.set_ylim(0,int(max(self.spectra_cat_counts)+1))
-            if data == 'protein_counts':
-                ax.set_ylim(0,int(max(self.protein_cat_counts)+1))
-            ax.set_ylabel('Category Counts')
-            ax.set_title('bactNOG Categories')
-            xTickMarks = cat_list
-            ax.set_xticks(ind+width)
-            xtickNames = ax.set_xticklabels(xTickMarks)
-            plt.setp(xtickNames, rotation=0, fontsize=12)
-            plt.show()       
+            self.make_bar_plot (self.nog_category_count_list, cat_list, start_index = 0, error_list = "", fig_name = save_fig, y_max = "", x_label = "bactNOG Categories", y_label = data)
 
-    def enrichment_counts (self, plot="no"):
+#------------------------------------------------------------------#
+
+    def enrichment_counts (self, plot = "no", max_y = "", print_txt = "", save_fig = ""):
         enr_list = ['0--1','2--10','11--19','20--28','29--37','38--46','47--55','56--64','65--73','74--82','83--91','92--100']
-        self.spectra_enr_counts = [0.0]*len(enr_list)
+        # get spectral counts for each enrichment bin
+        self.enrichment_count_dict = {}
+        self.enrichment_count_dict[self.name] = {}
+        for enr in enr_list:
+            self.enrichment_count_dict[self.name][enr] = 0.0
         for protein_string in self.proteins:
             enrichment_bins = self.calculate_enrichment_bins(self.proteins[protein_string]['enrichments'])
-            self.spectra_enr_counts = [ x + y for x,y in zip(self.spectra_enr_counts,enrichment_bins)]
+            for i in range(len(enrichment_bins)):
+                self.enrichment_count_dict[self.name][enr_list[i]] += enrichment_bins[i]
+        # put counts in an array for plotting
+        self.enrichment_count_list = []   
+        for enr in enr_list[1:]:
+            data_point = [self.name, enr, self.enrichment_count_dict[self.name][enr]/self.spectra_count]
+            self.enrichment_count_list.append(data_point)
         if plot == "yes":
-            print("plotting enrichment histogram")
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ## the data
-            N = len(enr_list) - 1             # number of enrichment bins
-            ## necessary variables
-            ind = np.arange(N)                # the x locations for the groups
-            width = 0.35                      # the width of the bars
-            ## the bars
-            rects = ax.bar(ind, self.spectra_enr_counts[1:], width,color='black')
-            # axes and labels
-            ax.set_xlim(-width,len(ind)+width)
-            ax.set_ylim(0,int(max(self.spectra_enr_counts[1:])+1))
-            ax.set_ylabel('Spectra Counts')
-            ax.set_title('Enrichment Bins')
-            xTickMarks = enr_list[1:]
-            ax.set_xticks(ind+width)
-            xtickNames = ax.set_xticklabels(xTickMarks)
-            plt.setp(xtickNames, rotation=225, fontsize=12)
-            plt.show()       
+            self.make_bar_plot (self.enrichment_count_list, enr_list, start_index = 1, error_list = "", fig_name = save_fig, y_max = max_y , x_label = "%Enrichment Bins", y_label = "Spectral Counts")
         
+#------------------------------------------------------------------#
+
+    def taxa_x_nog_category_counts (self, rank, min_count=0, plot="no", data="spectra_counts", max_y = "", print_txt = "", save_fig = ""):
+        
+        # add in options for taxa and cat lists ie. plot_taxa = "", and plot_cats = ""
+        # do this for all the report methods
+        
+        rank_list = ['domain','phylum','class','order','family','genus','species']
+        rank_index = {'domain':0,'phylum':1,'class':2,'order':3,'family':4,'genus':5,'species':6}
+        cat_indexes = {'A':0,'B':1,'C':2,'D':3,'E':4,'F':5,'G':6,'H':7,'I':8,
+                       'J':9,'K':10,'L':11,'M':12,'N':13,'O':14,'P':15,'Q':16,
+                       'R':17,'S':18,'T':19,'U':20,'V':21,'W':22,'X':23,'Y':24,'Z':25,'na':26,'u':27}
+        cat_list = ['A','B','C','D','E','F','G','H','I','J','K','L','M',
+                    'N','O','P','Q','R','S','T','U','V','W','X','Y','Z','na','u']
+        # get counts for each nog category for each taxa
+        self.taxa_x_nog_category_count_dict = {}
+        self.taxa_x_nog_category_count_dict[self.name] = {}
+        for protein_string in self.proteins:
+            protein_taxonomy = self.proteins[protein_string]['taxonomy']    # [dom,phy,cla,odr,fam,gen,spe]
+            taxa_name = protein_taxonomy[rank_index[rank]]
+            if taxa_name not in self.taxa_x_nog_category_count_dict[self.name]:
+                self.taxa_x_nog_category_count_dict[self.name][taxa_name] = [0.0]*len(cat_list)
+            [nog,cat,des] = self.proteins[protein_string]['bactNOG']
+            parsed_cat = self.parse_cat(cat)
+            for c in parsed_cat:                    ####IF cat in cat list
+                if data == 'spectra_counts':
+                    self.taxa_x_nog_category_count_dict[self.name][taxa_name][cat_indexes[c]] += sum(self.proteins[protein_string]['enrichments'])/len(parsed_cat)
+                if data == 'protein_counts':
+                    self.taxa_x_nog_category_count_dict[self.name][taxa_name][cat_indexes[c]] += 1/len(parsed_cat)
+        # filter taxa list by min count for plotting
+        self.taxa_x_nog_category_count_plot_dict = {}
+        taxa_list = []
+        for taxa_name in self.taxa_x_nog_category_count_dict[self.name]:
+            nog_counts_list = self.taxa_x_nog_category_count_dict[self.name][taxa_name]
+            nog_count_sum = sum(nog_counts_list)
+            if nog_count_sum >= min_count:
+                taxa_list.append(taxa_name)
+                self.taxa_x_nog_category_count_plot_dict[taxa_name] = [x/nog_count_sum for x in nog_counts_list]
+            taxa_set = set(taxa_list)
+            taxa_list = list(taxa_set)
+            taxa_list.sort()                  ####IF plot_taxa: taxa_list = <>
+        self.make_multi_bar_plot (self.taxa_x_nog_category_count_plot_dict, taxa_list, cat_list, start_index = 0,
+                                  error_list = "", fig_name = "NOG counts by Taxa", y_max = "")
+           
+            
+                
+                
+        
+            
+
 
 #------------------------------------------------------------------#    
 #              Functions used in multiple Methods                  #
@@ -332,7 +341,7 @@ class SiprosSample():
         return(enrichment_list)
     
     def parse_cat (self,cat):
-        parsed_cat = []
+        #parsed_cat = []
         if 'na' in cat:
             parsed_cat = ['na']
         else:
@@ -387,6 +396,71 @@ class SiprosSample():
             self.enrv = enrValSum/enrSum
         else:  
             self.enrv = 0.0
+            
+    def make_bar_plot (self, data_array, labels_list, start_index = 0, error_list = "", fig_name = "", y_max = "", x_label = "", y_label = ""):
+        dpoints = np.asarray(data_array)
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        group_names = np.unique(dpoints[:,0])
+        division_names = np.unique(dpoints[:,1])
+        # the space between each set of bars
+        space = 0.5
+        n = len(group_names)
+        width = (1 - space) / (len(group_names))
+        # Create a set of bars at each position
+        for i,cond in enumerate(group_names):
+            print "group:", cond
+            indeces = range(1, len(division_names)+1)
+            vals = dpoints[dpoints[:,0] == cond][:,2].astype(np.float)
+            #errs = dpoints[dpoints[:,0] == cond][:,3].astype(np.float) use 4 th spot in data list for erreor
+            pos = [j - (1 - space) / 2. + i * width for j in indeces]
+            ax.bar(pos, vals, width=width, label=cond, color=cm.Accent(float(i) / n)) # yerr = errs
+        # Set the max value for the y axis
+        y_vals = np.unique(dpoints[:,2])
+        y_vals = [float(x) for x in y_vals]
+        if y_max:
+            ax.set_ylim(0, y_max)
+        else:
+            ax.set_ylim(0,max(y_vals)+0.01)        
+        # Set the x-axis tick labels to be equal to the categories
+        ax.set_xticks(indeces)
+        ax.set_xticklabels(labels_list[start_index:])
+        plt.setp(plt.xticks()[1], rotation=90)
+        # Add the axis labels
+        ax.set_ylabel(y_label)
+        ax.set_title(x_label)
+        # Add a legend
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles[::-1], labels[::-1], loc='upper right')
+        if fig_name:
+            plt.savefig(fig_name)
+        plt.show()
+            
+    def make_multi_bar_plot (self, data_dict, title_list, labels_list, start_index = 0, error_list = "", fig_name = "", y_max = ""):
+        labels_list = labels_list[start_index:]
+        ind = np.arange(len(labels_list))
+        width = 0.9
+        f, ax = plt.subplots(len(title_list), 1, sharey=True, sharex=True)
+        f.subplots_adjust(bottom=0) #make room for the legend
+        f.subplots_adjust(hspace=0)
+        if y_max:
+            max_y = y_max
+        else:
+            max_y = 1
+        #plt.yticks(np.arange(0,max_y ,2))
+        plt.xticks(ind,labels_list[start_index:])
+        plt.suptitle(fig_name)
+        for i in range(len(title_list)):
+            vals = data_dict[title_list[i]]
+            vals = vals[start_index:]
+            ax[i].bar(ind, vals, width=0.9, color=cm.Accent(float(i)/len(vals)), align = 'center')
+            ax[i].set_ylim(0, 1)
+            ax[i].set_ylabel(title_list[i], verticalalignment='center', rotation='horizontal', horizontalalignment='center',size=6, x=1.0,y=0.5)
+        plt.figure(figsize=(8, 10), dpi=300)
+        if fig_name:
+            plt.savefig(fig_name)
+        plt.show()
+
 
 
 #------------------------------------------------------------------#
