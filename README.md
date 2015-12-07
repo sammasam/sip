@@ -1,2 +1,2 @@
 # sip
-python classes and methods for analysis of Sipros based Proteomics-SIP experiments
+data and code packages for analysis of Sipros based Proteomics-SIP experiments
